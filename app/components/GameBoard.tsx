@@ -67,48 +67,71 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
     const cards: GameCardType[] = [];
     const processedGroups = new Set<number>();
 
+    // 首先构建基础的表达式，不考虑括号
+    const baseCards: GameCardType[] = [];
     slots.forEach((slot, index) => {
-      if (slot.card) {
-        // 如果这个槽位是括号组的开始（有左括号）且还没处理过
-        if (slot.leftParenthesis && slot.parenthesesGroup && !processedGroups.has(slot.parenthesesGroup)) {
-          const groupId = slot.parenthesesGroup;
-          processedGroups.add(groupId);
-
-          // 找到对应的右括号位置
-          let rightParenthesisIndex = -1;
-          for (let i = index; i < slots.length; i++) {
-            if (slots[i].rightParenthesis && slots[i].parenthesesGroup === groupId) {
-              rightParenthesisIndex = i;
-              break;
-            }
-          }
-
-          if (rightParenthesisIndex !== -1) {
-            // 创建一个parenthesis-pair类型的卡片，这样会被flattenCards正确处理
-            const innerCards: GameCardType[] = [];
-
-            // 添加括号内的内容：左数字 + 运算符 + 右数字
-            // 即从当前(index)到rightParenthesisIndex，只包含有card的槽位
-            for (let i = index; i <= rightParenthesisIndex; i++) {
-              if (slots[i].card) {
-                innerCards.push(slots[i].card);
-              }
-            }
-
-            cards.push({
-              id: `parenthesis-pair-${groupId}`,
-              value: '()',
-              type: 'parenthesis-pair',
-              content: innerCards
-            });
-          }
-        } else if (!slot.leftParenthesis && !slot.rightParenthesis) {
-          // 不在括号组中的普通卡片
-          cards.push(slot.card);
-        }
-        // 如果是右括号但已经在组内处理过了，就跳过，避免重复添加
+      if (slot.card && !slot.leftParenthesis && !slot.rightParenthesis) {
+        baseCards.push(slot.card);
       }
     });
+
+    // 然后处理括号组，将基础表达式中的相应部分用括号包裹
+    const processedRanges: Array<{start: number, end: number, groupId: number}> = [];
+
+    slots.forEach((slot, index) => {
+      if (slot.leftParenthesis && slot.parenthesesGroup && !processedGroups.has(slot.parenthesesGroup)) {
+        const groupId = slot.parenthesesGroup;
+        processedGroups.add(groupId);
+
+        // 找到对应的右括号位置
+        let rightParenthesisIndex = -1;
+        for (let i = index; i < slots.length; i++) {
+          if (slots[i].rightParenthesis && slots[i].parenthesesGroup === groupId) {
+            rightParenthesisIndex = i;
+            break;
+          }
+        }
+
+        if (rightParenthesisIndex !== -1) {
+          processedRanges.push({start: index, end: rightParenthesisIndex, groupId});
+        }
+      }
+    });
+
+    // 按位置排序处理范围
+    processedRanges.sort((a, b) => a.start - b.start);
+
+    // 从基础表达式构建最终表达式，插入括号
+    let resultIndex = 0;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+
+      // 检查这个位置是否是括号组的开始
+      const range = processedRanges.find(r => r.start === i);
+      if (range) {
+        // 收集这个括号组内的所有卡片
+        const groupCards: GameCardType[] = [];
+        for (let j = range.start; j <= range.end; j++) {
+          if (slots[j].card) {
+            groupCards.push(slots[j].card);
+          }
+        }
+
+        // 添加括号组
+        cards.push({
+          id: `parenthesis-pair-${range.groupId}`,
+          value: '()',
+          type: 'parenthesis-pair',
+          content: groupCards
+        });
+
+        // 跳过已处理的槽位
+        i = range.end;
+      } else if (slot.card && !slot.leftParenthesis && !slot.rightParenthesis) {
+        // 添加普通卡片
+        cards.push(slot.card);
+      }
+    }
 
     return cards;
   };
