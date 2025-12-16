@@ -84,34 +84,29 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
           }
 
           if (rightParenthesisIndex !== -1) {
-            // 添加左括号
-            cards.push({
-              id: `left-paren-${groupId}`,
-              value: '(',
-              type: 'parenthesis',
-              parenthesisType: '('
-            });
+            // 创建一个parenthesis-pair类型的卡片，这样会被flattenCards正确处理
+            const innerCards: GameCardType[] = [];
 
-            // 添加括号内的内容（从当前位置到右括号位置的所有卡片）
+            // 添加括号内的内容：左数字 + 运算符 + 右数字
+            // 即从当前(index)到rightParenthesisIndex，只包含有card的槽位
             for (let i = index; i <= rightParenthesisIndex; i++) {
               if (slots[i].card) {
-                cards.push(slots[i].card);
+                innerCards.push(slots[i].card);
               }
             }
 
-            // 添加右括号
             cards.push({
-              id: `right-paren-${groupId}`,
-              value: ')',
-              type: 'parenthesis',
-              parenthesisType: ')'
+              id: `parenthesis-pair-${groupId}`,
+              value: '()',
+              type: 'parenthesis-pair',
+              content: innerCards
             });
           }
         } else if (!slot.leftParenthesis && !slot.rightParenthesis) {
           // 不在括号组中的普通卡片
           cards.push(slot.card);
         }
-        // 如果是右括号但已经在组内处理过了，就跳过
+        // 如果是右括号但已经在组内处理过了，就跳过，避免重复添加
       }
     });
 
