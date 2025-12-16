@@ -177,20 +177,31 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
     } else if (overId === 'available-operators') {
       targetArea = 'operators';
     } else if (overId.startsWith('number-')) {
-      // 如果拖拽到数字卡片上，但我们不是从数字区域来的，且不是表达式内部移动
-      // 可能是想要放到表达式，但是由于碰撞检测优先选择了卡片
-      // 这种情况下，如果来源不是数字区域，就认为是想要放到表达式
-      if (sourceArea !== 'numbers') {
+      // 检查被拖拽到的元素是否在表达式区域内
+      const overElement = document.getElementById(overId);
+      const isInExpressionZone = overElement?.closest('#expression-zone');
+
+      if (isInExpressionZone) {
+        targetArea = 'expression';
+        console.log('检测到目标数字卡片在表达式区域内');
+      } else if (sourceArea !== 'numbers') {
+        // 如果来源不是数字区域，且不在表达式内，推测目标是表达式
         targetArea = 'expression';
         console.log('检测到拖拽到数字卡片，但来源不是数字区域，推测目标是表达式');
       } else {
         targetArea = 'numbers';
       }
-    } else if (overId.startsWith('operator-')) {
-      // 类似的逻辑
-      if (sourceArea !== 'operators') {
+    } else if (overId.startsWith('operator-') || overId.startsWith('parenthesis-pair-')) {
+      // 检查被拖拽到的元素是否在表达式区域内
+      const overElement = document.getElementById(overId);
+      const isInExpressionZone = overElement?.closest('#expression-zone');
+
+      if (isInExpressionZone) {
         targetArea = 'expression';
-        console.log('检测到拖拽到运算符卡片，但来源不是运算符区域，推测目标是表达式');
+        console.log('检测到目标运算符/括号卡片在表达式区域内');
+      } else if (sourceArea !== 'operators') {
+        targetArea = 'expression';
+        console.log('检测到拖拽到运算符/括号卡片，但来源不是运算符区域，推测目标是表达式');
       } else {
         console.log('运算符区域内部拖拽，不处理');
         return;
@@ -365,7 +376,7 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -374,11 +385,9 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
         {/* 题目区域 */}
         <div className="text-center">
           <h3 className="text-lg font-semibold mb-4">🎲 题目</h3>
-          <div className="flex justify-center gap-3 flex-wrap">
+          <div className="flex justify-center gap-3 flex-wrap" id="available-numbers">
             {availableNumbers.map((card) => (
-              <div key={card.id} id="available-numbers">
-                <DraggableCard card={card} />
-              </div>
+              <DraggableCard key={card.id} card={card} />
             ))}
           </div>
         </div>
