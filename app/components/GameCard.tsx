@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { GameCard as GameCardType } from '~/utils/gameLogic';
@@ -85,7 +86,7 @@ export function DraggableCard({ card, disabled = false, className }: DraggableCa
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: card.id, disabled });
+  } = useDraggable({ id: card.id, disabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),

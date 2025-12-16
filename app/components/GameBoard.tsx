@@ -121,10 +121,20 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+
+    // 添加详细的调试信息
+    console.log('=== 拖拽结束事件开始 ===');
+    console.log('active:', active);
+    console.log('over:', over);
+    console.log('所有droppable容器:', event.droppableContainers);
+
     setActiveCard(null);
     setDragOverContainer(null);
 
-    if (!over) return;
+    if (!over) {
+      console.log('没有over元素，退出');
+      return;
+    }
 
     const activeId = active.id.toString();
     const overId = over.id.toString();

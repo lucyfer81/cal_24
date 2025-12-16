@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useDroppable } from '@dnd-kit/core';
@@ -20,8 +21,7 @@ export function ParenthesesPair({ card, disabled = false, className }: Parenthes
     transform,
     transition,
     isDragging,
-    over,
-  } = useSortable({ id: card.id, disabled });
+  } = useDraggable({ id: card.id, disabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),
