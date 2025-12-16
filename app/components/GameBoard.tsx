@@ -31,6 +31,10 @@ interface ExpressionSlot {
   position: number;
   card: GameCardType | null;
   isHighlighted?: boolean;
+  // 括号包装状态
+  leftParenthesis?: boolean;
+  rightParenthesis?: boolean;
+  parenthesesGroup?: number; // 属于哪个括号组
 }
 
 export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
@@ -207,10 +211,10 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
   };
 
   const handleParenthesesDrop = (parenthesesCard: GameCardType, targetPosition: number, sourceType: 'expression' | 'numbers' | 'operators') => {
-    // 括号逻辑：找到适合的 [数字-运算符-数字] 组合并包装
+    // 括号逻辑：在 [数字-运算符-数字] 组合两侧添加括号装饰
     console.log('处理括号拖拽，目标位置:', targetPosition);
 
-    // 简化处理：如果目标位置是运算符，包装两边的数字
+    // 如果目标是运算符槽位，检查两侧是否有数字
     if (expressionSlots[targetPosition].type === 'operator') {
       const leftPos = targetPosition - 1;
       const rightPos = targetPosition + 1;
@@ -219,19 +223,30 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
         const leftSlot = expressionSlots[leftPos];
         const rightSlot = expressionSlots[rightPos];
 
-        if (leftSlot.card?.type === 'number' && rightSlot.card?.type === 'number') {
-          // 创建带内容的括号对
-          const newParenthesesCard = {
-            ...parenthesesCard,
-            content: [leftSlot.card!, expressionSlots[targetPosition].card!, rightSlot.card!]
-          };
+        // 检查是否形成有效的 [数字-运算符-数字] 组合
+        if (leftSlot.card?.type === 'number' && rightSlot.card?.type === 'number' &&
+            expressionSlots[targetPosition].card?.type === 'operator') {
 
-          // 用括号对替换这三个位置
+          // 生成唯一的括号组ID
+          const groupId = Date.now();
+
           setExpressionSlots(prev => {
             const newSlots = [...prev];
-            newSlots[leftPos].card = null;
-            newSlots[targetPosition].card = null;
-            newSlots[rightPos].card = newParenthesesCard;
+
+            // 在左侧数字槽位添加左括号
+            newSlots[leftPos] = {
+              ...newSlots[leftPos],
+              leftParenthesis: true,
+              parenthesesGroup: groupId
+            };
+
+            // 在右侧数字槽位添加右括号
+            newSlots[rightPos] = {
+              ...newSlots[rightPos],
+              rightParenthesis: true,
+              parenthesesGroup: groupId
+            };
+
             return newSlots;
           });
 
@@ -240,14 +255,14 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
             setAvailableOperators(prev => prev.filter(c => c.id !== parenthesesCard.id));
           }
 
+          console.log('✅ 成功添加括号包装');
           return;
+        } else {
+          console.log('⚠️ 无法添加括号：缺少数字或运算符');
         }
       }
-    }
-
-    // 如果不适合包装，就放到空的位置
-    if (expressionSlots[targetPosition].card === null) {
-      handleCardDrop(parenthesesCard, targetPosition, sourceType);
+    } else {
+      console.log('⚠️ 括号只能拖到运算符位置');
     }
   };
 
@@ -255,6 +270,7 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
     // 将所有表达式卡片移回可用区域
     const numbersToReturn: GameCardType[] = [];
     const operatorsToReturn: GameCardType[] = [];
+    const usedGroups = new Set<number>();
 
     expressionSlots.forEach(slot => {
       if (slot.card) {
@@ -262,25 +278,32 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
           numbersToReturn.push(slot.card);
         } else if (slot.card.type === 'operator') {
           operatorsToReturn.push(slot.card);
-        } else if (slot.card.type === 'parenthesis-pair' && slot.card.content) {
-          // 递归处理括号对内的内容
-          slot.card.content.forEach(contentCard => {
-            if (contentCard.type === 'number') {
-              numbersToReturn.push(contentCard);
-            } else if (contentCard.type === 'operator') {
-              operatorsToReturn.push(contentCard);
-            }
-          });
-          operatorsToReturn.push(slot.card); // 括号本身
         }
+      }
+
+      // 如果有括号组，添加括号到可用区域（每个组只添加一次）
+      if (slot.parenthesesGroup && !usedGroups.has(slot.parenthesesGroup)) {
+        usedGroups.add(slot.parenthesesGroup);
+        operatorsToReturn.push({
+          id: `parenthesis-pair-${slot.parenthesesGroup}`,
+          value: '()',
+          type: 'parenthesis-pair',
+          content: []
+        });
       }
     });
 
     setAvailableNumbers(prev => [...prev, ...numbersToReturn]);
     setAvailableOperators(prev => [...prev, ...operatorsToReturn]);
 
-    // 清空所有槽位
-    setExpressionSlots(prev => prev.map(slot => ({ ...slot, card: null })));
+    // 清空所有槽位和括号状态
+    setExpressionSlots(prev => prev.map(slot => ({
+      ...slot,
+      card: null,
+      leftParenthesis: false,
+      rightParenthesis: false,
+      parenthesesGroup: undefined
+    })));
   };
 
   return (
@@ -381,6 +404,8 @@ function Slot({ slot, isDragOver, onDragOver, onDragLeave }: SlotProps) {
 
   const isNumberSlot = slot.type === 'number';
   const isOperatorSlot = slot.type === 'operator';
+  const hasLeftParenthesis = slot.leftParenthesis;
+  const hasRightParenthesis = slot.rightParenthesis;
 
   return (
     <div
@@ -395,12 +420,21 @@ function Slot({ slot, isDragOver, onDragOver, onDragLeave }: SlotProps) {
         !slot.card && 'opacity-60'
       )}
     >
+      {/* 左括号 */}
+      {hasLeftParenthesis && (
+        <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-purple-600 z-10">
+          (
+        </div>
+      )}
+
+      {/* 卡片内容 */}
       {slot.card ? (
-        slot.card.type === 'parenthesis-pair' ? (
-          <ParenthesesPair card={slot.card} />
-        ) : (
+        <div className={cn(
+          'relative z-0',
+          hasLeftParenthesis && hasRightParenthesis && 'bg-purple-100 rounded'
+        )}>
           <DraggableCard card={slot.card} />
-        )
+        </div>
       ) : (
         <div className="text-center text-gray-400">
           <div className="text-xs font-medium">
@@ -410,6 +444,18 @@ function Slot({ slot, isDragOver, onDragOver, onDragLeave }: SlotProps) {
             {isNumberSlot ? '🔢' : '➕'}
           </div>
         </div>
+      )}
+
+      {/* 右括号 */}
+      {hasRightParenthesis && (
+        <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-purple-600 z-10">
+          )
+        </div>
+      )}
+
+      {/* 括号背景效果 */}
+      {hasLeftParenthesis && hasRightParenthesis && (
+        <div className="absolute inset-0 border-2 border-purple-400 border-dashed rounded-lg -z-10" />
       )}
     </div>
   );
