@@ -234,22 +234,11 @@ export const calculateExpression = (cards: GameCard[]): GameResult => {
   // 计算表达式结果
   const result = evaluateAST(ast);
 
-  // 生成表达式字符串
-  const expression = flatCards
-    .map(card => {
-      if (card.type === 'number') {
-        return card.value.toString();
-      } else if (card.type === 'operator') {
-        return card.value as string;
-      } else if (card.type === 'parenthesis') {
-        return card.parenthesisType;
-      }
-      return '';
-    })
-    .join(' ');
+  // 生成表达式字符串（使用AST生成以正确处理括号）
+  const expression = generateExpressionString(ast);
 
-  // 生成计算步骤（简化版本）
-  steps.push(`计算表达式: ${generateExpressionString(ast)}`);
+  // 生成计算步骤
+  steps.push(`计算表达式: ${expression}`);
 
   const isCorrect = Math.abs(result - 24) < 0.001;
 
