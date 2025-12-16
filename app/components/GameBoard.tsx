@@ -20,6 +20,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { GameCard as GameCardComponent, DraggableCard } from './GameCard';
+import { ParenthesesPair } from './ParenthesesPair';
 import type { GameCard as GameCardType } from '~/utils/gameLogic';
 import { calculateExpression, getOperators } from '~/utils/gameLogic';
 import { cn } from '~/utils/cn';
@@ -79,8 +80,20 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
       }
     });
 
+    // 添加括号对卡片
+    const parenthesesPairCards: GameCardType[] = [];
+    // 添加多个括号对
+    for (let i = 0; i < 3; i++) {
+      parenthesesPairCards.push({
+        id: `parenthesis-pair-${i}`,
+        value: '()',
+        type: 'parenthesis-pair' as const,
+        content: [], // 初始为空括号对
+      });
+    }
+
     setAvailableNumbers(numberCards);
-    setAvailableOperators(multipleOperatorCards);
+    setAvailableOperators([...multipleOperatorCards, ...parenthesesPairCards]);
   }, [numbers]);
 
   // 计算表达式结果
@@ -182,6 +195,14 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
         console.log('运算符区域内部拖拽，不处理');
         return;
       }
+    } else if (overId.endsWith('-inner')) {
+      // 拖拽到括号对内部
+      targetArea = 'parentheses-inner';
+      console.log('检测到拖拽到括号对内部');
+    } else if (overId.startsWith('parenthesis-pair-')) {
+      // 拖拽到括号对本身，添加到括号对内容中
+      targetArea = 'parentheses-content';
+      console.log('检测到拖拽到括号对，将添加到内容中');
     } else {
       // 未知的overId，尝试通过上下文判断
       console.log('未知overId:', overId, '尝试通过上下文判断');
@@ -232,6 +253,64 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
       }
     }
 
+    // 处理拖拽到括号对内容区域
+    else if (targetArea === 'parentheses-inner' || targetArea === 'parentheses-content') {
+      if (sourceArea === 'numbers' || sourceArea === 'operators') {
+        // 从可用区域添加到括号对内部
+        const parentId = targetArea === 'parentheses-inner'
+          ? overId.replace('-inner', '')
+          : overId; // 直接使用parenthesis-pair-x的ID
+
+        const parentIndex = expressionCards.findIndex(card => card.id === parentId);
+
+        if (parentIndex !== -1 && expressionCards[parentIndex].type === 'parenthesis-pair') {
+          const newExpressionCards = [...expressionCards];
+          const parentCard = { ...newExpressionCards[parentIndex] };
+
+          // 添加内容到括号对
+          if (!parentCard.content) {
+            parentCard.content = [];
+          }
+          parentCard.content.push(draggedCard);
+
+          newExpressionCards[parentIndex] = parentCard;
+
+          // 从源区域移除卡片
+          if (sourceArea === 'numbers') {
+            setAvailableNumbers(cards => cards.filter((_, index) => index !== numCardIndex));
+          } else if (sourceArea === 'operators') {
+            setAvailableOperators(cards => cards.filter((_, index) => index !== opCardIndex));
+          }
+
+          setExpressionCards(newExpressionCards);
+          console.log('卡片已添加到括号对内容:', parentCard);
+        }
+      } else if (sourceArea === 'expression') {
+        // 从表达式移动到括号对内部
+        const parentId = targetArea === 'parentheses-inner'
+          ? overId.replace('-inner', '')
+          : overId; // 直接使用parenthesis-pair-x的ID
+
+        const parentIndex = expressionCards.findIndex(card => card.id === parentId);
+
+        if (parentIndex !== -1 && expressionCards[parentIndex].type === 'parenthesis-pair') {
+          const movedCard = expressionCards[exprCardIndex];
+          const newExpressionCards = expressionCards.filter((_, index) => index !== exprCardIndex);
+          const parentCard = { ...newExpressionCards[parentIndex] };
+
+          // 添加内容到括号对
+          if (!parentCard.content) {
+            parentCard.content = [];
+          }
+          parentCard.content.push(movedCard);
+
+          newExpressionCards[parentIndex] = parentCard;
+          setExpressionCards(newExpressionCards);
+          console.log('卡片已从表达式移动到括号对内容:', parentCard);
+        }
+      }
+    }
+
     // 处理拖拽回可用区域
     else if (targetArea === 'numbers' || targetArea === 'operators') {
       if (sourceArea === 'expression') {
@@ -265,13 +344,18 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
     const numbersToReturn: GameCardType[] = [];
     const operatorsToReturn: GameCardType[] = [];
 
-    expressionCards.forEach(card => {
+    const processCard = (card: GameCardType) => {
       if (card.type === 'number') {
         numbersToReturn.push(card);
-      } else {
+      } else if (card.type === 'operator') {
         operatorsToReturn.push(card);
+      } else if (card.type === 'parenthesis-pair' && card.content) {
+        // 递归处理括号对内的内容
+        card.content.forEach(processCard);
       }
-    });
+    };
+
+    expressionCards.forEach(processCard);
 
     setAvailableNumbers(prev => [...prev, ...numbersToReturn]);
     setAvailableOperators(prev => [...prev, ...operatorsToReturn]);
@@ -301,10 +385,14 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
 
         {/* 运算符工具箱 */}
         <div className="text-center">
-          <h3 className="text-lg font-semibold mb-4">🔧 运算符</h3>
+          <h3 className="text-lg font-semibold mb-4">🔧 运算符 & 括号</h3>
           <div className="flex justify-center gap-2 flex-wrap" id="available-operators">
             {availableOperators.map((card) => (
-              <DraggableCard key={card.id} card={card} />
+              card.type === 'parenthesis-pair' ? (
+                <ParenthesesPair key={card.id} card={card} />
+              ) : (
+                <DraggableCard key={card.id} card={card} />
+              )
             ))}
           </div>
         </div>
@@ -314,7 +402,7 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
           <h3 className="text-lg font-semibold mb-4">
             📝 表达式构建区
             <span className="text-sm text-gray-600 ml-2">
-              (按从左到右顺序计算)
+              (支持括号和运算符优先级)
             </span>
           </h3>
 
@@ -341,7 +429,11 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
                 <div className="flex items-center justify-center gap-2 flex-wrap">
                   {expressionCards.map((card) => (
                     <div key={card.id} id={`expression-${card.id}`}>
-                      <GameCardComponent card={card} />
+                      {card.type === 'parenthesis-pair' ? (
+                        <ParenthesesPair card={card} disabled={true} />
+                      ) : (
+                        <GameCardComponent card={card} />
+                      )}
                     </div>
                   ))}
                 </div>

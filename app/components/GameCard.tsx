@@ -28,8 +28,11 @@ export function GameCard({ card, disabled = false, onClick, className }: GameCar
   };
 
   const isNumber = card.type === 'number';
+  const isParenthesisPair = card.type === 'parenthesis-pair';
   const cardColor = isNumber
     ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white'
+    : isParenthesisPair
+    ? 'bg-gradient-to-br from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white border-2 border-dashed border-gray-400'
     : 'bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white';
 
   return (
@@ -91,8 +94,11 @@ export function DraggableCard({ card, disabled = false, className }: DraggableCa
   };
 
   const isNumber = card.type === 'number';
+  const isParenthesisPair = card.type === 'parenthesis-pair';
   const cardColor = isNumber
     ? 'bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white'
+    : isParenthesisPair
+    ? 'bg-gradient-to-br from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white border-2 border-dashed border-gray-300'
     : 'bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white';
 
   return (

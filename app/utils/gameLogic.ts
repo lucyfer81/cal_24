@@ -6,8 +6,9 @@
 export interface GameCard {
   id: string;
   value: number | string;
-  type: 'number' | 'operator';
+  type: 'number' | 'operator' | 'parenthesis-pair';
   originalIndex?: number;
+  content?: GameCard[]; // 括号对内的内容
 }
 
 export interface GameResult {
@@ -15,6 +16,17 @@ export interface GameResult {
   expression: string;
   isCorrect: boolean;
   steps?: string[];
+}
+
+/**
+ * AST节点结构
+ */
+export interface TreeNode {
+  type: 'number' | 'operation';
+  value?: number;
+  operator?: string;
+  left?: TreeNode;
+  right?: TreeNode;
 }
 
 export interface QuestionData {
@@ -41,15 +53,167 @@ export const getOperators = (): string[] => {
   return Object.keys(OPERATORS);
 };
 
+
 /**
- * 简化计算引擎 - 按从左到右顺序计算
+ * 将卡片序列转换为token数组（移除括号，按优先级排序）
  */
+export const tokenizeExpression = (cards: GameCard[]): GameCard[] => {
+  const tokens: GameCard[] = [];
+  const stack: GameCard[] = [];
+
+  for (const card of cards) {
+    if (card.type === 'number') {
+      tokens.push(card);
+    } else if (card.type === 'operator') {
+      // 处理运算符优先级
+      while (stack.length > 0 &&
+             stack[stack.length - 1].type === 'operator' &&
+             OPERATORS[stack[stack.length - 1].value as string].precedence >=
+             OPERATORS[card.value as string].precedence) {
+        tokens.push(stack.pop()!);
+      }
+      stack.push(card);
+    } else if (card.type === 'parenthesis' && card.parenthesisType === '(') {
+      stack.push(card);
+    } else if (card.type === 'parenthesis' && card.parenthesisType === ')') {
+      // 弹出栈内元素直到遇到左括号
+      while (stack.length > 0 &&
+             !(stack[stack.length - 1].type === 'parenthesis' && stack[stack.length - 1].parenthesisType === '(')) {
+        tokens.push(stack.pop()!);
+      }
+      if (stack.length > 0) {
+        stack.pop(); // 弹出左括号
+      }
+    }
+  }
+
+  // 将剩余运算符弹出栈
+  while (stack.length > 0) {
+    tokens.push(stack.pop()!);
+  }
+
+  return tokens;
+};
+
+/**
+ * 构建AST
+ */
+export const buildAST = (tokens: GameCard[]): TreeNode | null => {
+  const stack: TreeNode[] = [];
+
+  for (const token of tokens) {
+    if (token.type === 'number') {
+      stack.push({
+        type: 'number',
+        value: token.value as number
+      });
+    } else if (token.type === 'operator') {
+      const right = stack.pop();
+      const left = stack.pop();
+
+      if (!left || !right) {
+        return null; // 表达式无效
+      }
+
+      stack.push({
+        type: 'operation',
+        operator: token.value as string,
+        left,
+        right
+      });
+    }
+  }
+
+  return stack.length === 1 ? stack[0] : null;
+};
+
+/**
+ * 解析表达式为AST
+ */
+export const parseExpression = (cards: GameCard[]): TreeNode | null => {
+  // 验证括号平衡
+  let balance = 0;
+  for (const card of cards) {
+    if (card.value === '(') {
+      balance++;
+    } else if (card.value === ')') {
+      balance--;
+      if (balance < 0) return null;
+    }
+  }
+  if (balance !== 0) return null;
+
+  // 转换为逆波兰表达式（后缀表达式）
+  const tokens = tokenizeExpression(cards);
+
+  // 构建AST
+  return buildAST(tokens);
+};
+
+/**
+ * 递归计算AST
+ */
+export const evaluateAST = (node: TreeNode | null): number => {
+  if (!node) {
+    return NaN;
+  }
+
+  if (node.type === 'number') {
+    return node.value ?? 0;
+  }
+
+  if (node.type === 'operation' && node.operator && node.left && node.right) {
+    const leftValue = evaluateAST(node.left);
+    const rightValue = evaluateAST(node.right);
+
+    const operation = OPERATORS[node.operator as keyof typeof OPERATORS];
+    if (!operation) {
+      return NaN;
+    }
+
+    return operation.calculate(leftValue, rightValue);
+  }
+
+  return NaN;
+};
+
+/**
+ * 从AST生成表达式字符串
+ */
+export const generateExpressionString = (node: TreeNode | null): string => {
+  if (!node) {
+    return '';
+  }
+
+  if (node.type === 'number') {
+    return (node.value ?? 0).toString();
+  }
+
+  if (node.type === 'operation' && node.operator && node.left && node.right) {
+    const leftExpr = generateExpressionString(node.left);
+    const rightExpr = generateExpressionString(node.right);
+
+    // 根据运算符优先级决定是否需要加括号
+    const needsLeftParens = node.left.type === 'operation' &&
+      OPERATORS[node.left.operator!].precedence < OPERATORS[node.operator].precedence;
+    const needsRightParens = node.right.type === 'operation' &&
+      (OPERATORS[node.right.operator!].precedence < OPERATORS[node.operator].precedence ||
+        (OPERATORS[node.right.operator!].precedence === OPERATORS[node.operator].precedence &&
+         node.operator === '-'));
+
+    const leftStr = needsLeftParens ? `(${leftExpr})` : leftExpr;
+    const rightStr = needsRightParens ? `(${rightExpr})` : rightExpr;
+
+    return `${leftStr} ${node.operator} ${rightStr}`;
+  }
+
+  return '';
+};
 export const calculateExpression = (cards: GameCard[]): GameResult => {
   if (cards.length === 0) {
     return { result: 0, expression: '', isCorrect: false };
   }
 
-  const expression: string[] = [];
   const steps: string[] = [];
 
   // 验证卡片序列的有效性
@@ -57,48 +221,40 @@ export const calculateExpression = (cards: GameCard[]): GameResult => {
     return { result: NaN, expression: '', isCorrect: false };
   }
 
-  // 提取数字和运算符
-  const numbers: number[] = [];
-  const operators: string[] = [];
+  // 将嵌套结构扁平化用于解析
+  const flatCards = flattenCards(cards);
 
-  cards.forEach(card => {
-    if (card.type === 'number') {
-      numbers.push(card.value as number);
-      expression.push(card.value.toString());
-    } else if (card.type === 'operator') {
-      operators.push(card.value as string);
-      expression.push(card.value as string);
-    }
-  });
-
-  // 按从左到右顺序计算
-  let result = numbers[0] || 0;
-  steps.push(`${result}`);
-
-  for (let i = 0; i < operators.length && i + 1 < numbers.length; i++) {
-    const operator = operators[i];
-    const nextNumber = numbers[i + 1];
-
-    if (isNaN(nextNumber)) {
-      return { result: NaN, expression: expression.join(' '), isCorrect: false };
-    }
-
-    const operation = OPERATORS[operator as keyof typeof OPERATORS];
-    if (!operation) {
-      return { result: NaN, expression: expression.join(' '), isCorrect: false };
-    }
-
-    const prevResult = result;
-    result = operation.calculate(prevResult, nextNumber);
-
-    steps.push(`${prevResult} ${operator} ${nextNumber} = ${result}`);
+  // 解析表达式为AST
+  const ast = parseExpression(flatCards);
+  if (!ast) {
+    return { result: NaN, expression: '', isCorrect: false };
   }
+
+  // 计算表达式结果
+  const result = evaluateAST(ast);
+
+  // 生成表达式字符串
+  const expression = flatCards
+    .map(card => {
+      if (card.type === 'number') {
+        return card.value.toString();
+      } else if (card.type === 'operator') {
+        return card.value as string;
+      } else if (card.type === 'parenthesis') {
+        return card.parenthesisType;
+      }
+      return '';
+    })
+    .join(' ');
+
+  // 生成计算步骤（简化版本）
+  steps.push(`计算表达式: ${generateExpressionString(ast)}`);
 
   const isCorrect = Math.abs(result - 24) < 0.001;
 
   return {
     result: Math.round(result * 100) / 100, // 保留两位小数
-    expression: expression.join(' '),
+    expression,
     isCorrect,
     steps
   };
@@ -107,27 +263,107 @@ export const calculateExpression = (cards: GameCard[]): GameResult => {
 /**
  * 验证卡片序列是否有效
  */
+/**
+ * 将嵌套的括号对结构转换为扁平化的表达式数组
+ */
+export const flattenCards = (cards: GameCard[]): GameCard[] => {
+  const result: GameCard[] = [];
+
+  const flatten = (cardList: GameCard[]) => {
+    for (const card of cardList) {
+      if (card.type === 'parenthesis-pair') {
+        // 添加左括号
+        result.push({
+          id: `${card.id}-left`,
+          value: '(',
+          type: 'parenthesis',
+          parenthesisType: '('
+        });
+
+        // 递归处理括号内容
+        if (card.content && card.content.length > 0) {
+          flatten(card.content);
+        }
+
+        // 添加右括号
+        result.push({
+          id: `${card.id}-right`,
+          value: ')',
+          type: 'parenthesis',
+          parenthesisType: ')'
+        });
+      } else {
+        result.push(card);
+      }
+    }
+  };
+
+  flatten(cards);
+  return result;
+};
+
+/**
+ * 验证卡片序列是否有效（更新以支持括号对）
+ */
 export const isValidCardSequence = (cards: GameCard[]): boolean => {
   if (cards.length === 0) return false;
 
-  // 必须以数字开头
-  if (cards[0].type !== 'number') return false;
+  // 将嵌套结构扁平化
+  const flatCards = flattenCards(cards);
 
-  // 检查序列：数字 -> 运算符 -> 数字 -> 运算符 ...
+  // 验证扁平化后的表达式
+  if (flatCards.length === 0) return false;
+
+  // 必须以数字开头（允许左括号开头）
+  const firstCard = flatCards[0];
+  if (firstCard.type !== 'number' && firstCard.value !== '(') {
+    return false;
+  }
+
+  // 必须以数字结尾（允许右括号结尾）
+  const lastCard = flatCards[flatCards.length - 1];
+  if (lastCard.type !== 'number' && lastCard.value !== ')') {
+    return false;
+  }
+
+  // 验证序列逻辑
   let expectingNumber = true;
 
-  for (const card of cards) {
-    if (expectingNumber && card.type !== 'number') {
-      return false;
+  for (const card of flatCards) {
+    if (card.value === '(') {
+      // 左括号后期望数字
+      expectingNumber = true;
+      continue;
+    } else if (card.value === ')') {
+      // 右括号后期望运算符
+      expectingNumber = false;
+      continue;
     }
-    if (!expectingNumber && card.type !== 'operator') {
-      return false;
+
+    if (expectingNumber) {
+      if (card.type !== 'number') {
+        return false;
+      }
+    } else {
+      if (card.type !== 'operator') {
+        return false;
+      }
     }
     expectingNumber = !expectingNumber;
   }
 
-  // 必须以数字结尾
-  return cards[cards.length - 1].type === 'number';
+  // 验证括号匹配
+  let balance = 0;
+  for (const card of flatCards) {
+    if (card.value === '(') {
+      balance++;
+    } else if (card.value === ')') {
+      balance--;
+      if (balance < 0) return false;
+    }
+  }
+
+  return balance === 0;
 };
 
 /**
