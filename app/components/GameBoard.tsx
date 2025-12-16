@@ -62,6 +62,62 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
     })
   );
 
+  // 将槽位转换为包含括号信息的表达式卡片数组
+  const convertSlotsToExpressionCards = (slots: ExpressionSlot[]): GameCardType[] => {
+    const cards: GameCardType[] = [];
+    const processedGroups = new Set<number>();
+
+    slots.forEach((slot, index) => {
+      if (slot.card) {
+        // 如果这个槽位是括号组的开始（有左括号）且还没处理过
+        if (slot.leftParenthesis && slot.parenthesesGroup && !processedGroups.has(slot.parenthesesGroup)) {
+          const groupId = slot.parenthesesGroup;
+          processedGroups.add(groupId);
+
+          // 找到对应的右括号位置
+          let rightParenthesisIndex = -1;
+          for (let i = index; i < slots.length; i++) {
+            if (slots[i].rightParenthesis && slots[i].parenthesesGroup === groupId) {
+              rightParenthesisIndex = i;
+              break;
+            }
+          }
+
+          if (rightParenthesisIndex !== -1) {
+            // 添加左括号
+            cards.push({
+              id: `left-paren-${groupId}`,
+              value: '(',
+              type: 'parenthesis',
+              parenthesisType: '('
+            });
+
+            // 添加括号内的内容（从当前位置到右括号位置的所有卡片）
+            for (let i = index; i <= rightParenthesisIndex; i++) {
+              if (slots[i].card) {
+                cards.push(slots[i].card);
+              }
+            }
+
+            // 添加右括号
+            cards.push({
+              id: `right-paren-${groupId}`,
+              value: ')',
+              type: 'parenthesis',
+              parenthesisType: ')'
+            });
+          }
+        } else if (!slot.leftParenthesis && !slot.rightParenthesis) {
+          // 不在括号组中的普通卡片
+          cards.push(slot.card);
+        }
+        // 如果是右括号但已经在组内处理过了，就跳过
+      }
+    });
+
+    return cards;
+  };
+
   // 初始化可用卡片
   useEffect(() => {
     const numberCards: GameCardType[] = numbers.map((num, index) => ({
@@ -100,9 +156,8 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
 
   // 计算表达式结果
   useEffect(() => {
-    const expressionCards = expressionSlots
-      .filter(slot => slot.card !== null)
-      .map(slot => slot.card!);
+    // 将槽位转换为包含括号信息的表达式卡片数组
+    const expressionCards = convertSlotsToExpressionCards(expressionSlots);
 
     if (expressionCards.length >= 3) { // 至少需要2个数字和1个运算符
       const result = calculateExpression(expressionCards);

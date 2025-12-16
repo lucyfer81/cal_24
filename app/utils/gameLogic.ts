@@ -6,9 +6,10 @@
 export interface GameCard {
   id: string;
   value: number | string;
-  type: 'number' | 'operator' | 'parenthesis-pair';
+  type: 'number' | 'operator' | 'parenthesis-pair' | 'parenthesis';
   originalIndex?: number;
   content?: GameCard[]; // 括号对内的内容
+  parenthesisType?: '(' | ')'; // 括号类型
 }
 
 export interface GameResult {
