@@ -115,6 +115,11 @@ export function Game({ env }: GameProps) {
   }) => {
     setGameResult(result);
 
+    // 只有当表达式有效时才提交到API
+    if (!result.expression || result.expression.trim() === '' || isNaN(result.result)) {
+      return;
+    }
+
     if (!userInfo || !question) return;
 
     const timeSpent = Math.floor((Date.now() - gameStartTime) / 1000);

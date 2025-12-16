@@ -156,7 +156,11 @@ export function GameBoard({ numbers, onResult, className }: GameBoardProps) {
 
     if (expressionCards.length >= 3) { // 至少需要2个数字和1个运算符
       const result = calculateExpression(expressionCards);
-      onResult(result);
+
+      // 只有当表达式有效时才调用 onResult，避免发送空字符串到API
+      if (result.expression && result.expression.trim() !== '') {
+        onResult(result);
+      }
     }
   }, [expressionSlots, onResult]);
 
