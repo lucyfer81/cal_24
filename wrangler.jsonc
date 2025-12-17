@@ -86,5 +86,12 @@
 			"database_name": "game-24-db",
 			"database_id": "9542ac63-8655-47f2-a266-b68dfa5329ca"
 		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "USER_QUESTIONS",
+			"id": "6b527c53123847ce8087c1b541b5063a",
+			"preview_id": "26f0d88430754765a5cdbd0c90db152a"
+		}
 	]
 }
